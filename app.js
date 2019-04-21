@@ -37,7 +37,8 @@ var eventSchema = new mongoose.Schema({
 	volunteersRegistered: Array,
 	city: String,
 	eventId: String,
-	ngo: String
+	ngo: String,
+	address: String
 });
 var Event = mongoose.model("Event", eventSchema);
 
@@ -113,15 +114,48 @@ app.get("/volunteers/:name", function (req, res) {
 //Show route
 app.get("/events/:id", function (req, res) {
 	var id = req.params.id; //for now, supports city as a query parameter
-	Event.find({
-		eventId: id
-	}, function (err, events) {
-		if (err) {
-			console.log("Not working");
-		} else {
-			res.send(events);
+	Event.findById(id,
+		function (err, events) {
+			if (err) {
+				console.log("Not working");
+			} else {
+				res.send(events);
+			}
+		});
+});
+
+
+//Show route
+app.get("/events/:id/volunteers", function (req, res) {
+	var id = req.params.id; //for now, supports city as a query parameter
+	Event.findById(id,
+		function (err, event) {
+			if (err) {
+				console.log("Not working");
+			} else {
+				res.send(event.volunteersRegistered);
+			}
+		});
+});
+
+//Show route
+app.get("/volunteers/:userName/events", function (req, res) {
+	var userName = req.params.userName; //for now, supports city as a query parameter
+	Volunteer.find({
+			userName: userName
+		},
+		function (err, users) {
+			if (err) {
+				console.log("Not working");
+			} else {
+				var eventIds = [];
+				users.forEach(function (user) {
+					eventIds = user.eventsRegistered;
+				});
+				res.send(eventIds);
+			}
 		}
-	});
+	);
 });
 
 function isUniqueEntryAlreadyPresent(collection, uniqueNameKey, uniqueNameValue) {
@@ -248,19 +282,20 @@ app.post("/events", function (req, res) {
 	var name = req.body.name;
 	var description = req.body.description;
 	var ngo = req.body.ngo;
-	var eventId = uuidv1();
 	var city = req.body.city;
+	var address=req.body.address;
 
 	console.log("Input: " + req.body);
 	var newEvent = {
 		name: name,
 		description: description,
 		ngo: ngo,
-		eventId: eventId,
 		city: city,
-		volunteers: []
+		volunteers: [],
+		address: address
 	};
 	console.log(newEvent);
+	
 	Event.create(newEvent, function (err, event) {
 		if (err) {
 			console.log("Event not saved");
@@ -268,23 +303,12 @@ app.post("/events", function (req, res) {
 		} else {
 			console.log("Event saved in Event table" + event);
 			//Also update in NGO table events list
-			NGO.find({
-				userName: ngo
-			}, function (err, ngo) {
-				if (event != null) {
-					console.log("There is an ngo with the user name: " + ngo);
-				} else {
-					console.log("There is no ngo with this username");
-				}
-				if (err) {
-					console.log("Error in fetching ngo records");
-				}
-			});
+			
 			NGO.findOneAndUpdate({
 				userName: ngo
 			}, {
 				$push: {
-					eventsHosted: eventId
+					eventsHosted: event._id
 				}
 			}, function (err, doc) {
 				if (err) {
@@ -299,83 +323,137 @@ app.post("/events", function (req, res) {
 });
 
 app.put("/events/:eventId/register", function (req, res) {
+	console.log("-----------REGISTER FOR EVENT---------------");
 	var volunteerUserName = req.body.userName;
 	var eventId = req.params.eventId;
-	console.log("Input: " + req.body);
-	var noError = true;
+	console.log("Input: " + JSON.stringify(req.body));
+	var eventUpdated = false;
+	var volunteerUpdated = false;
 	var errorMessage = null;
-	Event.find({
-		eventId: eventId
-	}, function (err, event) {
-		if (event != null) {
-			console.log("There is an event with the eventId: " + eventId);
-			Volunteer.findOneAndUpdate({
-				userName: volunteerUserName
-			}, {
-				$push: {
-					eventsRegistered: eventId
-				}
-			}, function (err, doc) {
-				if (err) {
-					errorMessage = "Unable to update the Volunteer table event list with this event: " + event;
-					console.log(errorMessage);
-					noError = false;
-				}
-			});
-		} else {
-			errorMessage = "There is no event with this id: " + eventId;
-			console.log(errorMessage);
-			noError = false;
+	Event.findByIdAndUpdate(eventId, {
+		$push: {
+			volunteersRegistered: volunteerUserName
 		}
+	}, function (err, doc) {
 		if (err) {
-			errorMessage = "Error in fetching event records: " + eventId;
+			errorMessage = "Unable to update the Event table's registered volunteer list with this name: " + volunteerUserName;
 			console.log(errorMessage);
-			noError = false;
+			sendErrorResponse(errorMessage, 500, res);
+		} else {
+			eventUpdated = true;
 		}
 	});
 
-	Volunteer.find({
+	Volunteer.findOneAndUpdate({
 		userName: volunteerUserName
-	}, function (err, volunteers) {
-		if (volunteers != null) {
-			console.log("There is a volunteer with the user name: " + volunteerUserName);
-			Event.findOneAndUpdate({
-				eventId: eventId
-			}, {
-				$push: {
-					volunteersRegistered: volunteerUserName
-				}
-			}, function (err, doc) {
-				if (err) {
-					errorMessage = "Unable to update the Event table volunteers list with this volunteer: " + volunteers;
-					console.log(errorMessage);
-					noError = false;
-				}
-			});
-		} else {
-			errorMessage = "There is no volunteer with this user name: " + volunteerUserName;
-			console.log(errorMessage);
-			noError = false;
+	}, {
+		$push: {
+			eventsRegistered: eventId
 		}
+	}, function (err, doc) {
 		if (err) {
-			errorMessage = "Error in fetching volunteer records :" + volunteerUserName;
+			errorMessage = "Unable to update the Volunteer table event list with this event: " + event;
 			console.log(errorMessage);
-			noError = false;
+			sendErrorResponse(errorMessage, 500, res);
+		} else {
+			volunteerUpdated = true;
 		}
 	});
 
-	if (noError) {
+	if (eventUpdated && volunteerUpdated) {
 		res.status(200).send({
 			"status": "SUCCESS"
 		});
-	} else {
-		res.status(500).send({
-			"status": "FAILED",
-			"errorMessage": errorMessage
-		});
+	}
+	else {
+		sendErrorResponse("Unable to update both Event and Volunteer tables", 500, res);
 	}
 
 });
+
+function sendErrorResponse(errorMessage, errorCode, res) {
+	res.status(errorCode).send({
+		"status": "FAILED",
+		"errorMessage": errorMessage
+	});
+}
+
+//login route-Volunteer
+app.post("/volunteers/login", function (req, res) {
+	var userName = req.body.userName;
+	var password = req.body.password;
+	var foundVolunteerWithVaidPwd = false;
+	console.log("Input: " + JSON.stringify(req.body));
+
+	Volunteer.find({
+		userName: userName
+	}, function (err, volunteers) {
+		if (err) {
+			sendErrorResponse("No volunteer with this user name", 400, res);
+		}
+		if ((volunteers != null && !Array.isArray(volunteers)) || (Array.isArray(volunteers) && volunteers.length > 0)) {
+			if (Array.isArray(volunteers) === true) {
+				volunteers.forEach(function (volunteer) {
+					if (volunteer.password === password) {
+						res.status(200).send(volunteer);
+						foundVolunteerWithVaidPwd = true;
+					}
+				});
+
+			} else {
+				if (volunteers.password === password) {
+					res.status(200).send(volunteers);
+					foundVolunteerWithVaidPwd = true;
+				}
+			}
+			if (foundVolunteerWithVaidPwd === false) {
+				sendErrorResponse("Invalid password", 400, res);
+			}
+
+		} else {
+			sendErrorResponse("No volunteer with this user name", 400, res);
+		}
+	});
+});
+
+//login route-NGO
+app.post("/ngos/login", function (req, res) {
+	var userName = req.body.userName;
+	var password = req.body.password;
+	var foundNGOWithValidPwd = false;
+	console.log("Input: " + JSON.stringify(req.body));
+
+	NGO.find({
+		userName: userName
+	}, function (err, ngos) {
+		if (err) {
+			sendErrorResponse("No ngo with this user name", 400, res);
+		}
+
+		if ((ngos != null && !Array.isArray(ngos)) || (Array.isArray(ngos) && ngos.length > 0)) {
+			if (Array.isArray(ngos) === true) {
+				ngos.forEach(function (ngo) {
+					if (ngo.password === password) {
+						res.status(200).send(ngo);
+						foundNGOWithValidPwd = true;
+					}
+				});
+			} else {
+				if (ngos.password === password) {
+					res.status(200).send(ngos);
+					foundNGOWithValidPwd = true;
+				}
+			}
+			if (foundNGOWithValidPwd === false) {
+				sendErrorResponse("Invalid password", 400, res);
+			}
+
+		} else {
+			sendErrorResponse("No ngo with this user name", 400, res);
+		}
+	});
+});
+
 
 app.listen(process.env.PORT, process.env.IP, function () {
 	console.log("The server has started");
