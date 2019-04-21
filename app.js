@@ -17,6 +17,7 @@ var volunteerSchema = new mongoose.Schema({
 	description: String,
 	eventsRegistered: Array,
 	rating: Number,
+	eventsHistory:Array,
 	city: String
 });
 var Volunteer = mongoose.model("Volunteer", volunteerSchema);
@@ -27,7 +28,8 @@ var ngoSchema = new mongoose.Schema({
 	eventsHosted: Array,
 	rating: Number,
 	userName: String,
-	password: String
+	password: String,
+	eventsHistory: Array
 });
 var NGO = mongoose.model("NGO", ngoSchema);
 
@@ -38,7 +40,10 @@ var eventSchema = new mongoose.Schema({
 	city: String,
 	eventId: String,
 	ngo: String,
-	address: String
+	address: String, 
+	contact:{name: String,
+	number: String},
+	rating: Number
 });
 var Event = mongoose.model("Event", eventSchema);
 
@@ -327,8 +332,6 @@ app.put("/events/:eventId/register", function (req, res) {
 	var volunteerUserName = req.body.userName;
 	var eventId = req.params.eventId;
 	console.log("Input: " + JSON.stringify(req.body));
-	var eventUpdated = false;
-	var volunteerUpdated = false;
 	var errorMessage = null;
 	Event.findByIdAndUpdate(eventId, {
 		$push: {
@@ -340,7 +343,6 @@ app.put("/events/:eventId/register", function (req, res) {
 			console.log(errorMessage);
 			sendErrorResponse(errorMessage, 500, res);
 		} else {
-			eventUpdated = true;
 			Volunteer.findOneAndUpdate({
 				userName: volunteerUserName
 			}, {
@@ -353,7 +355,6 @@ app.put("/events/:eventId/register", function (req, res) {
 					console.log(errorMessage);
 					sendErrorResponse(errorMessage, 500, res);
 				} else {
-					volunteerUpdated = true;
 					res.status(200).send({
 						"status": "SUCCESS"
 					});
@@ -369,6 +370,50 @@ function sendErrorResponse(errorMessage, errorCode, res) {
 		"errorMessage": errorMessage
 	});
 }
+
+app.put("/volunteers/:username", function (req, res) {
+	console.log("-----------UPDATE VOLUNTEER INFO---------------");
+	var name = req.params.username;
+	var setVars=req.body;
+	console.log("Input: " + JSON.stringify(req.body));
+	var errorMessage;
+	
+		Volunteer.findOneAndUpdate({
+				userName: name
+			}, {
+				$set: setVars
+			}, function (err, doc) {
+				if (err) {
+					errorMessage = "Unable to update the Volunteer table with the new parameters" + setVars;
+					console.log(errorMessage);
+					sendErrorResponse(errorMessage, 500, res);
+				} else {
+				res.redirect("/volunteers/"+name);
+				}
+			});
+});
+
+app.put("/ngos/:username", function (req, res) {
+	console.log("-----------UPDATE NGO INFO---------------");
+	var name = req.params.username;
+	var setVars=req.body;
+	console.log("Input: " + JSON.stringify(req.body));
+	var errorMessage;
+	
+		NGO.findOneAndUpdate({
+				userName: name
+			}, {
+				$set: setVars
+			}, function (err, doc) {
+				if (err) {
+					errorMessage = "Unable to update the NGO table with the new parameters" + setVars;
+					console.log(errorMessage);
+					sendErrorResponse(errorMessage, 500, res);
+				} else {
+					res.redirect("/ngos/"+name);
+				}
+			});
+});
 
 //login route-Volunteer
 app.post("/volunteers/login", function (req, res) {
