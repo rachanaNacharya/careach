@@ -283,7 +283,7 @@ app.post("/events", function (req, res) {
 	var description = req.body.description;
 	var ngo = req.body.ngo;
 	var city = req.body.city;
-	var address=req.body.address;
+	var address = req.body.address;
 
 	console.log("Input: " + req.body);
 	var newEvent = {
@@ -295,7 +295,7 @@ app.post("/events", function (req, res) {
 		address: address
 	};
 	console.log(newEvent);
-	
+
 	Event.create(newEvent, function (err, event) {
 		if (err) {
 			console.log("Event not saved");
@@ -303,7 +303,7 @@ app.post("/events", function (req, res) {
 		} else {
 			console.log("Event saved in Event table" + event);
 			//Also update in NGO table events list
-			
+
 			NGO.findOneAndUpdate({
 				userName: ngo
 			}, {
@@ -341,34 +341,26 @@ app.put("/events/:eventId/register", function (req, res) {
 			sendErrorResponse(errorMessage, 500, res);
 		} else {
 			eventUpdated = true;
+			Volunteer.findOneAndUpdate({
+				userName: volunteerUserName
+			}, {
+				$push: {
+					eventsRegistered: eventId
+				}
+			}, function (err, doc) {
+				if (err) {
+					errorMessage = "Unable to update the Volunteer table event list with this event: " + event;
+					console.log(errorMessage);
+					sendErrorResponse(errorMessage, 500, res);
+				} else {
+					volunteerUpdated = true;
+					res.status(200).send({
+						"status": "SUCCESS"
+					});
+				}
+			});
 		}
 	});
-
-	Volunteer.findOneAndUpdate({
-		userName: volunteerUserName
-	}, {
-		$push: {
-			eventsRegistered: eventId
-		}
-	}, function (err, doc) {
-		if (err) {
-			errorMessage = "Unable to update the Volunteer table event list with this event: " + event;
-			console.log(errorMessage);
-			sendErrorResponse(errorMessage, 500, res);
-		} else {
-			volunteerUpdated = true;
-		}
-	});
-
-	if (eventUpdated && volunteerUpdated) {
-		res.status(200).send({
-			"status": "SUCCESS"
-		});
-	}
-	else {
-		sendErrorResponse("Unable to update both Event and Volunteer tables", 500, res);
-	}
-
 });
 
 function sendErrorResponse(errorMessage, errorCode, res) {
